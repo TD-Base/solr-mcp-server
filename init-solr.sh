@@ -14,9 +14,8 @@ if [ ! -f /mydata/films.json ]; then
   wget -O /mydata/films.json https://raw.githubusercontent.com/apache/solr/refs/heads/main/solr/example/films/films.json
 fi
 
-
-# Start Solr in background
-/opt/solr/bin/solr start -c -z zoo:2181
+# Start Solr in background (standalone mode)
+/opt/solr/bin/solr start
 
 # Wait for Solr to be up
 until curl -s http://localhost:8983/solr/ > /dev/null; do
@@ -24,58 +23,24 @@ until curl -s http://localhost:8983/solr/ > /dev/null; do
   sleep 2
 done
 
-# Wait for ZooKeeper to be fully ready for SolrCloud operations
-echo "Waiting for ZooKeeper to be ready for SolrCloud operations..."
-sleep 10
-
-# Wait for cluster state to be ready
-until curl -s "http://localhost:8983/solr/admin/collections?action=CLUSTERSTATUS" | grep -q '"responseHeader"'; do
-  echo "Waiting for SolrCloud cluster to be ready..."
-  sleep 2
-done
-
-# Create the 'books' collection in SolrCloud mode
-# Check if collection already exists via Collections API
-if ! curl -s "http://localhost:8983/solr/admin/collections?action=LIST" | grep -q '"books"'; then
-  echo "Creating books collection..."
-  /opt/solr/bin/solr create -c books -n _default || {
-    echo "First attempt failed, retrying collection creation..."
-    sleep 5
-    /opt/solr/bin/solr create -c books -n _default || {
-      echo "Collection creation failed twice, but continuing..."
-    }
+# Create cores in standalone mode (if missing)
+if ! curl -s "http://localhost:8983/solr/admin/cores?action=STATUS&core=books&wt=json" | grep -q '"name":"books"'; then
+  echo "Creating books core..."
+  /opt/solr/bin/solr create_core -c books -n _default || {
+    echo "Core creation failed, but continuing..."
   }
 else
-  echo "Books collection already exists, skipping creation."
+  echo "Books core already exists, skipping creation."
 fi
 
-
-# Wait for collection to be ready
-until curl -s "http://localhost:8983/solr/admin/collections?action=LIST" | grep -q '"books"'; do
-  echo "Waiting for books collection to be ready..."
-  sleep 2
-done
-
-# Create the 'films' collection in SolrCloud mode
-# Check if collection already exists via Collections API
-if ! curl -s "http://localhost:8983/solr/admin/collections?action=LIST" | grep -q '"films"'; then
-  echo "Creating films collection..."
-  /opt/solr/bin/solr create -c films -n _default || {
-    echo "First attempt failed, retrying collection creation..."
-    sleep 5
-    /opt/solr/bin/solr create -c films -n _default || {
-      echo "Collection creation failed twice, but continuing..."
-    }
+if ! curl -s "http://localhost:8983/solr/admin/cores?action=STATUS&core=films&wt=json" | grep -q '"name":"films"'; then
+  echo "Creating films core..."
+  /opt/solr/bin/solr create_core -c films -n _default || {
+    echo "Core creation failed, but continuing..."
   }
 else
-  echo "Films collection already exists, skipping creation."
+  echo "Films core already exists, skipping creation."
 fi
-
-# Wait for films collection to be ready
-until curl -s "http://localhost:8983/solr/admin/collections?action=LIST" | grep -q '"films"'; do
-  echo "Waiting for films collection to be ready..."
-  sleep 2
-done
 
 curl -X POST -H 'Content-type:application/json' --data-binary '{
   "add-field": {
@@ -92,12 +57,11 @@ curl -X POST -H 'Content-type:application/json' --data-binary '{
 }' http://localhost:8983/solr/films/schema
 
 ## Post the books.csv data
-#/opt/solr/bin/solr post -c books /mydata/books.csv
+/opt/solr/bin/solr post -c books /mydata/books.csv
 
 # Post the films.json data
 /opt/solr/bin/solr post -c films /mydata/films.json
 
-
-# Stop background Solr and run in foreground
+# Stop background Solr and run in foreground (standalone)
 /opt/solr/bin/solr stop
-exec /opt/solr/bin/solr start -c -z zoo:2181 -f
+exec /opt/solr/bin/solr start -f
