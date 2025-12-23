@@ -1,0 +1,49 @@
+services:
+    server:
+        build:
+            context: .
+            dockerfile: docker/server/Dockerfile
+        networks: [ search ]
+
+        volumes:
+            - ./:/workspace
+            - gradle-cache:/root/.gradle
+            - jar-share:/artifacts
+            - /var/run/docker.sock:/var/run/docker.sock
+
+        extra_hosts:
+            - "host.docker.internal:host-gateway"
+
+        environment:
+            SOLR_URL: http://solr:8983/solr
+            DOCKER_HOST: unix:///var/run/docker.sock
+            TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
+
+        command: [ "bash", "/workspace/docker/server/start.sh" ]
+
+    inspector:
+        build:
+            context: .
+            dockerfile: docker/inspector/Dockerfile
+        networks: [ search ]
+        depends_on: [ server ]
+        ports:
+            - "6274:6278"
+            - "6277:6279"
+        volumes:
+            - ./:/workspace
+            - jar-share:/artifacts
+            - npm-cache:/root/.npm
+        environment:
+            - DANGEROUSLY_OMIT_AUTH=true
+            - SOLR_URL=http://localhost:8984/solr #nodig om te weten waar solr zit
+
+volumes:
+    data:
+    gradle-cache:
+    npm-cache:
+    jar-share:
+
+networks:
+    search:
+        driver: bridge
